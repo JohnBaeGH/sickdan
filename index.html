@@ -531,8 +531,7 @@
                     }
                 `;
 
-                // [수정 완료] 수명이 완료된 프리뷰 엔드포인트 대신, 영구 표준 정식 모델인 gemini-2.5-flash 탑재
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                 const payload = {
                     contents: [{
                         role: "user",
@@ -678,7 +677,7 @@
         // 음식별 칼로리 영양 판정
         async function estimateFoodCalorie(apiKey, foodName) {
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
                 const payload = {
                     contents: [{
                         parts: [{ text: `음식 '${foodName}' 1인분 평균 열량을 숫자만 정수로 표기하여 {"calories": 숫자} JSON 양식으로 적어주세요.` }]
