@@ -37,14 +37,14 @@
         <div class="max-w-md mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-2">
                 <i class="fa-solid fa-utensils text-2xl animate-bounce"></i>
-                <h1 class="text-xl font-bold tracking-tight">식구 <span class="text-[10px] font-normal text-teal-100 bg-teal-800 px-1.5 py-0.5 rounded-full">Debug Console</span></h1>
+                <h1 class="text-xl font-bold tracking-tight">식구 <span class="text-[10px] font-normal text-teal-100 bg-teal-800 px-1.5 py-0.5 rounded-full">URL Auto-Fix</span></h1>
             </div>
             <div class="flex items-center space-x-2">
                 <button id="btnAdminTab" class="text-xs bg-teal-800 bg-opacity-40 hover:bg-opacity-60 px-2.5 py-1.5 rounded-full transition-all text-teal-100 border border-teal-500/30">
                     <i class="fa-solid fa-user-gear mr-1"></i>관리자
                 </button>
                 <button id="btnSettings" class="text-teal-100 hover:text-white transition-all p-1">
-                    <i class="fa-solid fa-gear text-lg"></i>
+                    <i class="fa-solid fa-gear text-lg animate-spin-slow"></i>
                 </button>
             </div>
         </div>
@@ -171,7 +171,7 @@
             </div>
         </section>
 
-        <!-- 디버그 & 실시간 로그 패널 (접기/열기 가능) -->
+        <!-- 디버그 & 실시간 로그 패널 -->
         <section class="mt-6 bg-slate-900 rounded-3xl p-5 text-slate-100 shadow-xl border border-slate-800 space-y-4">
             <div class="flex justify-between items-center border-b border-slate-800 pb-3">
                 <div class="flex items-center space-x-2">
@@ -229,9 +229,8 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                 </div>
             </div>
 
-            <!-- 실시간 동적 로그 컨테이너 -->
+            <!-- 실시간 동적 로그 콘테이너 -->
             <div id="logConsole" class="h-60 overflow-y-auto text-xs font-mono space-y-2 bg-slate-950 p-3 rounded-2xl border border-slate-800 custom-scrollbar">
-                <!-- 로그가 여기에 한 줄씩 붉은색, 초록색 등으로 기록됩니다 -->
                 <div class="text-slate-500">[SYSTEM] 로그 서버 가동 준비 완료.</div>
             </div>
         </section>
@@ -262,6 +261,7 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                     <div>
                         <label class="block text-xs font-bold text-gray-700 mb-1.5">Supabase URL</label>
                         <input type="text" id="cfgSupabaseUrl" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2.5 text-sm border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <p class="text-[10px] text-emerald-600 mt-1"><i class="fa-solid fa-circle-info"></i> 이제 끝에 '/rest/v1/'이 포함되어도 프로그램이 자동 수정합니다!</p>
                     </div>
 
                     <!-- Supabase Anon Key -->
@@ -405,10 +405,23 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             log("info", "요일 헤더 계산 완료.");
         }
 
+        // URL 보정 처리 함수 추가
+        function sanitizeSupabaseUrl(url) {
+            if (!url) return '';
+            let cleaned = url.trim();
+            // 끝에 붙은 공백 및 슬래시 제거
+            cleaned = cleaned.replace(/\/+$/, '');
+            // '/rest/v1' 경로가 수동으로 추가되어 있는 경우 제거
+            if (cleaned.endsWith('/rest/v1')) {
+                cleaned = cleaned.substring(0, cleaned.length - 8);
+            }
+            return cleaned.replace(/\/+$/, ''); // 최종 정돈
+        }
+
         // 로컬 스토리지에 저장된 설정 로딩
         function loadSavedConfigurations() {
             const gKey = localStorage.getItem('cfg_google_key');
-            const sUrl = localStorage.getItem('cfg_supabase_url');
+            let sUrl = localStorage.getItem('cfg_supabase_url');
             const sKey = localStorage.getItem('cfg_supabase_key');
 
             if (gKey) document.getElementById('cfgGoogleKey').value = gKey;
@@ -416,10 +429,19 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             if (sKey) document.getElementById('cfgSupabaseKey').value = sKey;
 
             if (sUrl && sKey) {
+                // 저장된 URL에 대해서도 자가 복원 필터 실행
+                const correctedUrl = sanitizeSupabaseUrl(sUrl);
+                if (correctedUrl !== sUrl) {
+                    log("warning", `저장된 URL에 '/rest/v1' 경로가 검출되어 자동 정정 처리합니다: ${sUrl} -> ${correctedUrl}`);
+                    sUrl = correctedUrl;
+                    localStorage.setItem('cfg_supabase_url', correctedUrl);
+                    document.getElementById('cfgSupabaseUrl').value = correctedUrl;
+                }
+
                 try {
                     supabaseClient = supabase.createClient(sUrl, sKey);
                     log("success", "Supabase 클라이언트가 정상적으로 초기화되었습니다.");
-                    log("info", `Supabase URL: ${sUrl}`);
+                    log("info", `보정된 Supabase API URL: ${sUrl}`);
                 } catch (err) {
                     log("error", "Supabase 클라이언트 초기화 중 예외가 생겼습니다.", err);
                     showDetailedAlert('연동 에러', 'Supabase 연결에 실패했습니다. 키 설정을 재확인하십시오.', 'error', err);
@@ -432,17 +454,25 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
 
         function saveConfigurations() {
             const gKey = document.getElementById('cfgGoogleKey').value.trim();
-            const sUrl = document.getElementById('cfgSupabaseUrl').value.trim();
+            let rawUrl = document.getElementById('cfgSupabaseUrl').value.trim();
             const sKey = document.getElementById('cfgSupabaseKey').value.trim();
 
-            if (!sUrl || !sKey) {
+            if (!rawUrl || !sKey) {
                 log("warning", "환경설정 저장 실패: Supabase 필수 값이 비어있습니다.");
                 showDetailedAlert('경고', 'Supabase 정보가 공란입니다.', 'warning');
                 return;
             }
 
+            // 실시간 저장 과정에서 오류 유발 주소 필터링
+            const correctedUrl = sanitizeSupabaseUrl(rawUrl);
+            if (rawUrl !== correctedUrl) {
+                log("success", `https://m.blog.naver.com/scvljb86/221074760932 불필요한 하위 API 주소를 감지해 정정 완료: ${correctedUrl}`);
+                rawUrl = correctedUrl;
+                document.getElementById('cfgSupabaseUrl').value = correctedUrl;
+            }
+
             localStorage.setItem('cfg_google_key', gKey);
-            localStorage.setItem('cfg_supabase_url', sUrl);
+            localStorage.setItem('cfg_supabase_url', rawUrl);
             localStorage.setItem('cfg_supabase_key', sKey);
 
             toggleSettingsModal(false);
@@ -648,10 +678,9 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                 console.error(err);
                 elMenuLoading.classList.add('hidden');
                 
-                // 에러 발생 원인 분리 디버깅 문구 생성
                 let friendlyMsg = 'DB 서버로부터 데이터를 가져오는 중 실패했습니다.';
-                if (err.code === 'PGRST116') {
-                    friendlyMsg = '테이블 조회 규칙 및 행 권한을 충족하지 못했거나 여러 개의 데이터가 중복 발생했습니다.';
+                if (err.code === 'PGRST125') {
+                    friendlyMsg = '설정하신 Supabase API URL 주소 뒤에 불필요한 경로(/rest/v1/)가 추가되어 에러가 발생했습니다. 저장된 설정 주소가 자동 보정되었으니 기어(⚙️) 아이콘을 눌러 저장 버튼을 다시 한번 클릭해 주십시오!';
                 } else if (err.code === '42P01') {
                     friendlyMsg = 'Supabase DB 내에 sikgoo_menus 혹은 sikgoo_images 테이블이 존재하지 않습니다. 아래 SQL 가이드를 클릭해 테이블을 추가하세요.';
                 } else if (err.status === 400 || err.status === 404 || err.status === 401) {
@@ -688,7 +717,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                 const base64Data = await fileToBase64(file);
                 const base64Clean = base64Data.split(',')[1];
 
-                // 식단표 기반 JSON 구조 파싱 프롬프트
                 const prompt = `
                     첨부된 구내식당 주간 식단표 사진을 분석해 주세요. 
                     월요일부터 금요일까지 각각의 날짜별로 '아침', '점심', '저녁' 메뉴가 어떻게 배열되어 있는지 파악하여 정형 JSON 형식으로 가공해 주세요.
@@ -709,7 +737,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                     }
                 `;
 
-                // 정식 엔드포인트 세팅
                 const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
                 log("info", "구글 Gemini 2.5 Flash API 전송 시작");
 
@@ -747,7 +774,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
 
                 updateProgress('식단 정보 데이터베이스 적용 중...', 40, `총 ${weeklyMenus.length}건의 개별 끼니 데이터를 Supabase에 업서트(Upsert)하는 중입니다.`);
 
-                // 추출된 음식 중복 체크용 셋(Set) 가동
                 const allFoods = new Set();
                 weeklyMenus.forEach(menu => {
                     menu.food_list.forEach(food => {
@@ -784,7 +810,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
                 for (let i = 0; i < uniqueFoods.length; i++) {
                     const foodName = uniqueFoods[i];
                     
-                    // 중복 생성 방지를 위한 기구축 이미지 검색
                     const { data: existingImg, error: checkErr } = await supabaseClient
                         .from('sikgoo_images')
                         .select('*')
@@ -846,7 +871,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             }
         }
 
-        // Google Imagen API를 통한 사진 렌더링
         async function generateFoodImageWithImagen(apiKey, foodName) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
             const prompt = `Close-up delicious, authentic Korean restaurant style photo of ${foodName}, appetizing lighting, high resolution, clean plate setup, food photography style, single dish, complete serving.`;
@@ -875,7 +899,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             return `data:image/jpeg;base64,${base64Bytes}`;
         }
 
-        // 음식별 칼로리 영양 판정
         async function estimateFoodCalorie(apiKey, foodName) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -946,7 +969,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             });
         }
 
-        // 상세 에러 디버깅 정보 수집용 알림창 함수로 업그레이드
         function showDetailedAlert(title, message, type = 'info', rawError = null) {
             const alertBox = document.getElementById('alertBox');
             const alertTitle = document.getElementById('alertTitle');
@@ -958,7 +980,6 @@ ALTER TABLE public.sikgoo_images DISABLE ROW LEVEL SECURITY;
             alertTitle.innerText = title;
             alertMsg.innerText = message;
 
-            // 로깅 유틸리티 호출
             if (rawError) {
                 log("error", `[알림창 트리거 에러] ${title}: ${message}`, rawError);
                 detailContent.innerText = typeof rawError === 'object' ? JSON.stringify(rawError, null, 2) : rawError.toString();
