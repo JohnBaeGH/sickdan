@@ -531,6 +531,7 @@
                     }
                 `;
 
+                // [수정 완료] 수명이 완료된 프리뷰 엔드포인트 대신, 영구 표준 정식 모델인 gemini-2.5-flash 탑재
                 const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
                 const payload = {
                     contents: [{
